@@ -1,0 +1,19 @@
+body, html {
+	margin: 0;
+	padding: 0;
+	height 100%;
+	font-family: Arial, sans-serif;
+}
+
+.background {
+	background-color: #333;
+}
+
+.content-box {
+	background-color: #666;
+	padding: 2rem;
+	border-radius: 12px;
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+	max-width: 500px;
+	text-align: left;
+}
