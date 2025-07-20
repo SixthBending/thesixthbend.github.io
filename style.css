@@ -6,11 +6,11 @@ body, html {
 }
 
 .background {
-	background-color: #333;
+	background-color: DarkSlateGrey;
 }
 
 .content-box {
-	background-color: #666;
+	background-color: LightGrey;
 	padding: 2rem;
 	border-radius: 12px;
 	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
@@ -18,6 +18,8 @@ body, html {
 }
 
 .text-box {
-	background-color: #999;
+	background-color: Azure;
 	text-align: left;
+	border-radius: 24px;
+	padding: 2rem;
 }
