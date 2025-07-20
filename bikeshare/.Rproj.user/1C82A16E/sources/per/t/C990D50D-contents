@@ -1,0 +1,90 @@
+---
+title: "R_Markdown_Intro"
+author: "Mikael"
+date: "2025-05-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# R Markdown Notes  
+
+## Basically some tricks  
+So in markdown, gotta remember that an asterisk does *this* to words, and two  
+asterisks do **this** to words. Idk how to do underlining yet.  
+
+Also, really need to remember about double  spacing for new lines, and then  
+double entering for a new paragraph (with a space in between).  
+
+### Obviously Headers too  
+Many type of headers, shown by hashtags, more = smaller.  
+Still, useful to know.  
+
+### Hyperlinks  
+Yeah you betcha, you can add hyperlinks like so:  
+<https://www.google.com>  
+Just add the less than/greater than signs on it and you're good to go.  
+Also there's this other way to do links:  
+[Google](https://www.google.com)  
+That way works by having the hyperlink text in square brackets, and the  
+hyperlink itself in parentheses right beside it.  
+
+*remember that it only works if you open this html knit on your browser.*
+
+### Bullet Points
+Yep, bullet points too. I don't know if there's more options, but as far as  
+I know you get them by using asterisks.  
+* How?  
+Just like that. So you type in an asterisk followed by a space and your words.
+
+## Code handling and such  
+Very important, since that's the bread and butter of R Markdown.  
+**STILL** you need to keep it in mind.  
+
+Right now I've got this file set up to show code, so it looks like this:  
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(palmerpenguins)
+head(penguins)
+```
+
+when I do something in R.  
+
+### What shortcut for adding code?  
+It's Ctrl+Alt+I, so yeah remember that super helpful. Just remember that any  
+words after r and before the comma in the curly brackets is the name of the  
+code segment.  
+
+### How to hide/unhide code in RMD  
+So basically since there's cases when it can be useful to show the code,
+I need to know when to do so. So there's two options I've gotten so far,
+and they are this:
+
+* **Option 1:** I set up the file in the beginning with this stuff:
+[knitr::opts_chunk$set(echo = FALSE)]
+which will turn the code off for good, but idk how to turn it back on.  
+* **Option 2:** I set up in each code segment in the curly brackets this:
+{r, echo = FALSE, warning = FALSE, message = FALSE}
+and it would work on ones I want to hide vs ones I don't, like so:
+```{r penguins, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data = penguins, mapping = aes(x =flipper_length_mm, y = body_mass_g)) +
+  geom_point(mapping = aes(color = island, shape = species)) +
+  labs(title = "Penguin Flipper Length compared to Body Mass",
+       caption = "Data Collected by Dr. Kristen Gorman from 2007-2009",
+       x = "Body Mass (g)", y = "Flipper Length  (mm)") +
+  geom_smooth(method = "loess") +
+  facet_wrap(~sex)
+```
+
+and voila I made a pretty good diagram without showing all the R code to make
+it, and if I wanted to show it I just don't include that echo segment.  
+
+### How to add images
+So we're adding pictures now? Yep, and how you do it is pretty similar to how  
+you add hyperlinks with text, just put an exclamation mark in front, followed  
+by the caption of the image in brackets and the link to the image in parentheses.  
+
+So it should look like this:  
+![Map of Tamriel](https://www.imperial-library.info/wp-content/uploads/image-2.png)

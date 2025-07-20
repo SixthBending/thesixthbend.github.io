@@ -1,0 +1,530 @@
+---
+title: "Cyclistic_Case_Study"
+author: "Mikael Tameru"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(flexdashboard)
+library(tidyverse)
+library(lubridate)
+library(janitor)
+library(ggtext)
+library(scales)
+library(ggpubr)
+library(fitdistrplus)
+library(gginference)
+```
+
+# Cyclistic Bike-share Analysis  
+
+## Background
+
+Cyclistic, a bike sharing company centralized in Chicago featuring over 5800
+bicycles and 600 docking stations, has decided to maximize their customer
+subscription rate to ensure their future success. With a large variety of
+options for people with disabilities and riders who can't use traditional
+bikes, they have garnered a large number of leisurely riders while ensuring
+they have a stable base of users biking to their work and back.  
+
+Lily Moreno, the director of marketing at Cyclistic, determined that the best
+way to ensure its future success is to increase their number of annual
+memberships. As such, this analysis will look into the usage of bikes and
+see how they differ between existing subscribers and casual riders, deciding
+whether or not a new marketing strategy to increase membership rates by
+targeting casual riders will lead to future success.  
+
+
+## Ask  
+
+Throughout this case study, the question being answered is as follows:
+"How do annual members and casual riders use Cyclistic bikes differently?"  
+
+This question prompts us to look at the riding habits of annual members and
+casual riders and see what is different between them. We will see what is the
+best path to expanding the amount of subscribers by seeing what is popular
+among the users, who will be more inclined to become a subscriber, and how to
+best market the subscription service to get maximum retention among the most
+likely candidates.  
+
+
+## Prepare
+
+In preparing for analysis two data sets were given from Cyclistic's public data
+and were used for the analysis. Both data sets have values for each instance
+a bike was used, with a duration, a starting station, and an end station, as
+well as whether the person using the bike is a subscriber or a casual user. The
+2019 dataset also has information on the gender and birth year of the users,
+while the 2020 dataset has information on the longitude and latitude of the
+starting and ending stations.
+
+From all of this information, we will use the station names, the ride durations,
+and the age/gender from the 2019 dataset to conduct analysis on. The rest of the
+data will not be used in this analysis since it doesn't relate to the objective
+of this data analysis, and will not provide any beneficial insight to the
+stakeholders regarding boosting subscription rates.
+
+
+## Process
+
+For this analysis, the two datasets were processed using Google Sheets and
+its data-cleaning functionality. The first step was to use the trim whitespace
+and remove duplicates functions on the entire dataset to check for those in
+the data. After this was done, the data was then filtered and searched to 
+locate any empty values which were then removed from the data, which removed
+18,022 rows between both datasets. Once this was done, columns that had 
+numeric values were ensured to have correct types, and any misspelled values
+were checked using pivot tables. 
+
+The 2020 data was lacking over half of the trip duration data, which was easily
+calculated and inserted into all values. Other than that, no other data had to
+be modified in order to ensure the veracity of the data.
+
+The integrity of the data was maintained during this cleaning process as all
+of this was done to a copy of the data, while Cyclistic's original dataset 
+remained unmodified. On top of this, every step in the cleaning process was
+logged and kept track of. As such, the data is ready to analyze.
+
+
+## Analysis and Share
+
+In order to perform the analysis on the cleaned datasets, they needed to be
+modified first to show the ride length and day of the week for each ride. 
+As such, here is how they were loaded and mutated:
+
+```{r load}
+# Load 2019 Data
+df_2019 <- read_csv("Divvy_Trips_2019_Q1.csv") %>% 
+  clean_names() %>%
+  mutate(
+    start_time = mdy_hms(start_time),
+    end_time = mdy_hms(end_time),
+    ride_length = as.numeric(difftime(end_time, start_time, units = "mins")),
+    day_of_week = wday(start_time, label = TRUE),
+    member_casual = if_else(usertype == "Subscriber", "member", "casual"),
+    age = 2019 - birthyear
+  ) %>% 
+  rename(started_at = start_time, ended_at = end_time) %>%
+  filter(ride_length > 0, !is.na(gender), !is.na(birthyear), birthyear > 1920 & birthyear < 2010)
+
+# Load 2020 Data
+df_2020 <- read_csv("Divvy_Trips_2020_Q1.csv") %>% 
+  clean_names() %>%
+  mutate(
+    started_at = ymd_hms(started_at),
+    ended_at = ymd_hms(ended_at),
+    ride_length = as.numeric(difftime(ended_at, started_at, units = "mins")),
+    day_of_week = wday(started_at, label = TRUE)
+  ) %>% 
+  filter(ride_length > 0)
+```
+
+Once the datasets were given the extra columns, they needed to be combined as
+shown here:
+
+```{r combine}
+all_trips <- bind_rows(
+  df_2020 %>% dplyr::select(started_at, ended_at, ride_length, day_of_week, member_casual),
+  df_2019 %>% dplyr::select(started_at, ended_at, ride_length, day_of_week, member_casual)
+)
+```
+
+Once the data was combined and consolidated into the "all_trips" table, it
+became ready to analyze on how the differences between the casual riders and
+the subscribers came into play. 
+
+
+### Ride Length Overview
+
+Showcased here is how the ride lengths were analyzed in order to see the
+average, median, and standard deviation for all rides, grouping all casual
+or subscribing riders together to highlight their totals.
+
+```{r summaries, echo=FALSE}
+all_trips %>%
+  group_by(member_casual) %>%
+  summarise(
+    avg_duration = mean(ride_length),
+    median_duration = median(ride_length),
+    sd_duration = sd(ride_length),
+    total_rides = n()
+  ) |> 
+  knitr::kable()
+```
+
+From this, one can see how the average duration of trips hovers at around 90
+minutes for casual members, while subscribers' average is much lower at 13
+minutes. Given that the standard deviation for casual riders is exceptionally
+large at over 1600 minutes, the data spreads greatly, which means the average
+could be skewed, which is consistent with the median being 21 minutes. Because
+of this, there are a large section of casual users who bike for shorter times
+with a smaller portion biking for an extended duration.
+
+While this is the case for casual users, subscribers have a lot more consistent
+usage, as shown with the lower standard deviation on the much larger section
+of data. Since this is the case, and the average is significantly lower for
+subscribers, there could be an advertisement campaign to target any casual
+users who are using bikes for a shorter duration since they match the habits
+of subscribers.
+
+
+### Rides by Weekday (With Counts)
+
+In order to see the changes from one day to another, two columns were created,
+showcasing the percent of all rides in data (split between casual riders and
+subscribers) for a particular weekday. As shown below, this division was
+shown in the column chart, showcasing how the number of rides change based
+on the day of the week.
+
+```{r weekdays, echo=FALSE, message=FALSE}
+weekday_data <- all_trips %>%
+  group_by(member_casual, day_of_week) %>%
+  summarise(n = n()) %>%
+  group_by(member_casual) %>%
+  mutate(percent = n / sum(n), label = paste0(n, " (", percent(percent, accuracy = 0.1), ")"))
+
+ggplot(weekday_data, aes(x = day_of_week, y = n, fill = member_casual)) +
+  geom_col(position = position_dodge(), show.legend = FALSE) +
+  geom_text(aes(label = label), position = position_dodge(width = 0.9), vjust = 0.5, size = 2.5, angle = 90) +
+  labs(title = "Rides by Day of Week", x = "Day", y = "Total Rides") +
+  theme_minimal() +
+  facet_wrap(~member_casual)
+```
+
+Based on this chart, one can deduce that members use the bike share mostly on
+weekdays, while almost half of all casual users ride bikes during the weekends.
+Looking at this one can infer that using some form of advertising during the
+weekends for showcasing the benefits of membership to casual users would
+be the most effective in garnering new members.
+
+
+### Station Popularity Analysis
+
+Cyclistic operates numerous bike-sharing stations throughout Chicago. 
+Understanding which stations are most frequently used allows the marketing 
+team to identify high-traffic areas for targeted campaigns. Below are 
+insights into the most popular start and end stations, 
+as well as the most common trip connections. 
+ 
+```{r start_stations_display, echo=FALSE, message=FALSE, results='hide'}
+stations <- bind_rows(
+  df_2019 %>% mutate(
+    start_station_name = from_station_name,
+    end_station_name = to_station_name
+  ),
+  df_2020 )
+
+```
+
+
+```{r station_plot_display, echo=FALSE, message=FALSE}
+# Get top start stations
+top_start <- stations %>%
+  count(station_name = start_station_name, sort = TRUE) %>%
+  top_n(10, n) %>%
+  mutate(type = "Start")
+
+# Get top end stations
+top_end <- stations %>%
+  count(station_name = end_station_name, sort = TRUE) %>%
+  top_n(10, n) %>%
+  mutate(type = "End")
+
+# Combine and compute label
+top_combined <- bind_rows(top_start, top_end) %>%
+  mutate(type = factor(type, levels = c("Start", "End"))) %>% 
+  group_by(type) %>%
+  mutate(
+    percentage = round(n / sum(n) * 100, 1),
+    label = paste0(n, " (", percentage, "%)")
+  )
+
+# Plot: clear labels inside bars
+ggplot(top_combined, aes(x = reorder(station_name, n), y = n, fill = type)) +
+  geom_bar(stat = "identity") +
+  geom_text(
+    aes(label = label),
+    hjust = 1.05,               # Puts label inside bar
+    color = "white",
+    size = 3.5
+  ) +
+  coord_flip() +
+  facet_wrap(~type, scales = "free_y") +
+  labs(
+    title = "Top 10 Most Popular Stations",
+    x = "Station Name",
+    y = "Number of Rides"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(face = "bold", size = 11),
+    plot.title = element_text(face = "bold", size = 14),
+    legend.position = "none"
+  )
+
+
+```
+
+The top 10 most popular starting and ending Stations represent the most frequent 
+origins and  likely to finish for rides, suggesting high 
+foot traffic or strategic locations like downtown hubs or transit intersections. 
+
+The graphs show that the top four stations for both starting and ending stations 
+are the same, revealing where riders are likely to start and finish 
+trips—often are near business districts, residential areas, or recreation zones.
+
+#### Top 10 Most Common Station Pairs (Connections)
+```{r plot_network_pair_station, echo=FALSE, message=FALSE}
+# Get top 10 station pairs with counts and percentages
+top_pairs <- stations %>%
+  count(start_station_name, end_station_name, sort = TRUE) %>%
+  top_n(10, n) %>%
+  mutate(
+    percentage = round(n / sum(n) * 100, 1),
+    label = paste0(n, " (", percentage, "%)"),
+    pair_id = row_number()
+  )
+
+# For plotting layout
+plot_data <- top_pairs %>%
+  dplyr::select(pair_id, start_station_name, end_station_name, label)
+
+# Determine highest y-position to place the column labels
+y_top <- max(plot_data$pair_id) + 1
+
+# Plot
+ggplot() +
+  # Connecting lines
+  geom_segment(
+    data = plot_data,
+    aes(x = 1, xend = 2, y = pair_id, yend = pair_id),
+    color = "gray50", linewidth = 1
+  ) +
+  # Start points and labels
+  geom_point(aes(x = 1, y = plot_data$pair_id), color = "#2c7fb8", size = 4) +
+  geom_text(aes(x = 1, y = plot_data$pair_id, label = plot_data$start_station_name),
+            hjust = 1.1, size = 3) +
+  
+  # End points and labels
+  geom_point(aes(x = 2, y = plot_data$pair_id), color = "#7fcdbb", size = 4) +
+  geom_text(aes(x = 2, y = plot_data$pair_id, label = plot_data$end_station_name),
+            hjust = -0.1, size = 3) +
+  
+  # n (%) labels above connecting lines
+  geom_text(aes(x = 1.5, y = plot_data$pair_id + 0.6, label = plot_data$label),
+            size = 3.2, fontface = "bold") +
+
+  # Only one set of headings for Start/End
+  annotate("text", x = 1, y = y_top, label = "Start", fontface = "bold", size = 4) +
+  annotate("text", x = 2, y = y_top, label = "End", fontface = "bold", size = 4) +
+
+  # Final adjustments
+  scale_x_continuous(limits = c(0.5, 2.5), breaks = NULL) +
+  scale_y_reverse() +
+  theme_void() +
+  labs(title = "Top 10 Most Frequent Station-to-Station Connections") +
+  theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5))
+
+
+```
+
+
+The top connections reflect popular commuting or leisure routes, which could 
+benefit from promotional partnerships or added infrastructure. Starting stations 
+and ending stations often overlap but are not always the same, suggesting 
+asymmetry in travel patterns.
+
+As such, top station pairs can indicate common commuter routes, especially if 
+occurring consistently across both years. Columbus Dr & Randolph St is the fifth 
+starting station but it is not in the top 10 of the ending station. 
+Further more it is the only station where it showed in the pair twice in the top 
+ten connections. It is far from a residential suburb—it's a bustling downtown 
+core combining dense residential towers with cultural venues, major transit 
+options, and active pedestrian zones.
+
+Marketing efforts should focus on the top 3–5 stations for physical promotions, 
+and route-based advertisements might be most effective between frequently 
+connected stations.Special attention should be given to  
+Columbus Dr & Randolph St station.
+
+### Rider Duration Distribution with a Normal Overlay
+
+In order to showcase the distribution of ride lengths and show how they differ
+based on whether they are casual riders or subscribers, the data was summarized
+into the mean and standard deviations of each type and then plotted to show
+their normal distribution chart. Ride lengths more than 60 minutes were
+excluded in this section since there were a number of rides lasting multiple
+weeks, which would make the chart impossible to scale effectively.
+
+```{r normal, echo=FALSE}
+# Compute mean and sd manually by group
+dist_params <- all_trips %>%
+  filter(ride_length < 60) %>%
+  group_by(member_casual) %>%
+  summarise(
+    mu = mean(ride_length),
+    sigma = sd(ride_length)
+  )
+
+# Summarize stats for labels
+dist_stats <- all_trips %>%
+  filter(ride_length < 60) %>%
+  group_by(member_casual) %>%
+  summarise(
+    mu = mean(ride_length),
+    sigma = sd(ride_length),
+    median_val = median(ride_length),
+    .groups = "drop"
+  )
+
+# Histogram and density plot
+plot_dist <- all_trips %>%
+  filter(ride_length < 60) %>%
+  ggplot(aes(x = ride_length, fill = member_casual)) +
+  
+  # Histogram
+  geom_histogram(aes(y = after_stat(density)), bins = 60,
+                 alpha = 0.4, position = "identity") +
+
+  # Normal curve overlays (member and casual)
+  stat_function(
+    fun = dnorm,
+    args = list(
+      mean = dist_stats$mu[dist_stats$member_casual == "member"],
+      sd = dist_stats$sigma[dist_stats$member_casual == "member"]
+    ),
+    color = "blue", linewidth = 1.2
+  ) +
+  stat_function(
+    fun = dnorm,
+    args = list(
+      mean = dist_stats$mu[dist_stats$member_casual == "casual"],
+      sd = dist_stats$sigma[dist_stats$member_casual == "casual"]
+    ),
+    color = "red", linewidth = 1.2
+  ) +
+
+  # Add vertical lines
+  geom_vline(data = dist_stats, aes(xintercept = mu), color = "darkblue", linetype = "dashed") +
+  geom_vline(data = dist_stats, aes(xintercept = median_val), color = "darkgreen", linetype = "dotted") +
+
+  # Add text labels for mean, median, and SD
+  geom_text(
+    data = dist_stats,
+    aes(x = mu, y = 0.06, label = paste0("Mean: ", round(mu, 1))),
+    angle = 90, hjust = -0.2, color = "darkblue", size = 3
+  ) +
+  geom_text(
+    data = dist_stats,
+    aes(x = median_val, y = 0.06, label = paste0("Median: ", round(median_val, 1))),
+    angle = 90, hjust = -0.2, color = "darkgreen", size = 3
+  ) +
+  geom_text(
+    data = dist_stats,
+    aes(x = mu + sigma, y = 0.04,
+        label = paste0("SD: ±", round(sigma, 1))),
+    hjust = 0, color = "gray30", size = 3
+  ) +
+
+  facet_wrap(~member_casual) +
+  labs(
+    title = "Ride Duration Distribution with Mean, Median, and SD",
+    subtitle = "Histogram with Normal Curve (Ride Duration < 60 min)",
+    x = "Ride Length (minutes)",
+    y = "Density"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    strip.text = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", size = 14)
+  )
+
+plot_dist
+
+
+```  
+
+From the graph we see that the mean, median and standard deviations for the members
+are very low compared to the casual. 
+From this normal distribution showcased of each user type shown we can see that 
+the casual is highly variable as we can see from the standard deviation 14.3 compared 
+to 8 for the members. 
+
+### Ride Duration by Gender and User Type (2019 only)  
+
+The 2019 data set also included gender and age, which allows us to look into
+those factors to further expand on demographics to be targeted for advertising.
+In this case, we looked at the differences of ride durations based on gender
+as shown in the following table:
+
+```{r gender, echo=FALSE, message=FALSE}
+df_2019 %>%
+  group_by(member_casual, gender) %>%
+  summarise(
+    avg_duration = mean(ride_length),
+    sd_duration = sd(ride_length),
+    median_age = median(age),
+    total_rides = n()
+  ) |> 
+  knitr::kable()
+```
+
+As seen with this table, there isn't a lot of variation between genders other
+than the number of rides, as there are many more male users than female users.
+However, there is a big difference between casual and member rides shown in
+their use times and ages. This difference showcases that casual members go
+on longer rides, and they tend to be younger in comparison to subscribers.
+And so in order to effectively advertise to casual riders the marketing team
+should focus on younger users using bikes for longer, with no gender targeting.
+
+
+### Paired t-test of Ride Lengths on Weekdays vs Weekends (2019 Only)
+
+To compare the ride lengths between members and casual users, we need to look at
+the member usage to see if there really is a big difference between members
+using bikes on weekends vs weekdays.
+
+```{r ttest, echo=FALSE, message=FALSE, warning=FALSE}
+library(stats)
+weekday <- df_2019 %>% filter(member_casual == "member", !day_of_week %in% c("Sat", "Sun"))
+weekend <- df_2019 %>% filter(member_casual == "member", day_of_week %in% c("Sat", "Sun"))
+test <- t.test(weekday$ride_length, weekend$ride_length, paired = FALSE)  # Welch t-test (unpaired as riders vary)
+library(gginference)
+ggttest(test)
+```
+
+As shown in the normal distribution of ride lengths, the t test showcases a
+big difference with a t value of -2.4958, meaning there's a definite difference
+between members using bikes on weekends and those using bikes on weekdays (the
+closer to 0, the more similar they are). Since the t test exposes this
+statistical difference between weekends and weekdays, there is an argument to
+be made that members don't use bikes anywhere near as often on weekends, which
+could mean there are more potential subscribers who can use bikes on weekends
+with no change to bike availability, and these subscribers could be pulled
+from casual users (of which 45.5% ride on weekends).
+
+
+## Act
+
+As seen with the results of the analysis, the best way to market Cyclistic's
+subscription service would be to target the weekend casual riders, specifically
+using the most popular stations, and advertise the convenience behind a
+subscription. This could be done with several styles of posters, either on the
+bikes, in the stations or even along the route between stations. Another way
+to increase subscription rates would be to advertise to casual users of the
+bikeshare app such as through advertisements after securing a ride.
+
+To expand my finding, some easy data would be finding out more seasonal-based
+habits and trends, as since I only looked at the first three months of 2019
+and 2020 I couldn't objectively make conclusions on yearly trends from the data.
+
+In conclusion, I recommend 
+* targeting younger casual users
+* targeting weekend casual riders
+* targeting high traffic stations and routes
+
+Following these three recommendations, Cyclistic will expand its subscriber
+base and maximize converting casual members to subscribers.
+

@@ -1,0 +1,202 @@
+---
+title: "Case study: How does a bike-share navigate speedy success? "
+author: "Mikael Tameru"
+date: "`r Sys.Date()`"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+    theme: readable
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(lubridate)
+library(janitor)
+library(ggtext)
+library(scales)
+library(ggpubr)
+library(fitdistrplus)
+```
+
+### Data Summary
+
+```{r}
+# Load 2020 Data
+df_2020 <- read_csv("Divvy_Trips_2020_Q1.csv") %>% 
+  clean_names() %>%
+  mutate(
+    started_at = ymd_hms(started_at),
+    ended_at = ymd_hms(ended_at),
+    ride_length = as.numeric(difftime(ended_at, started_at, units = "mins")),
+    day_of_week = wday(started_at, label = TRUE)
+  ) %>% 
+  filter(ride_length > 0)
+
+# Load 2019 Data
+df_2019 <- read_csv("Divvy_Trips_2019_Q1.csv") %>% 
+  clean_names() %>%
+  mutate(
+    start_time = ymd_hms(start_time),
+    end_time = ymd_hms(end_time),
+    ride_length = as.numeric(difftime(end_time, start_time, units = "mins")),
+    day_of_week = wday(start_time, label = TRUE),
+    member_casual = if_else(usertype == "Subscriber", "member", "casual"),
+    age = 2019 - birthyear
+  ) %>% 
+  rename(started_at = start_time, ended_at = end_time) %>%
+  filter(ride_length > 0, !is.na(gender), !is.na(birthyear), birthyear > 1920 & birthyear < 2010)
+
+# Combine
+all_trips <- bind_rows(
+  df_2020 %>% dplyr::select(started_at, ended_at, ride_length, day_of_week, member_casual),
+  df_2019 %>% dplyr::select(started_at, ended_at, ride_length, day_of_week, member_casual)
+)
+```
+
+
+```
+
+### Ride Length Overview
+
+```{r}
+all_trips %>%
+  group_by(member_casual) %>%
+  summarise(
+    avg_duration = mean(ride_length),
+    median_duration = median(ride_length),
+    sd_duration = sd(ride_length),
+    total_rides = n()
+  ) |> 
+  knitr::kable()
+```
+
+### Rides by Weekday with Counts
+
+```{r}
+weekday_data <- all_trips %>%
+  group_by(member_casual, day_of_week) %>%
+  summarise(n = n()) %>%
+  group_by(member_casual) %>%
+  mutate(percent = n / sum(n), label = paste0(n, " (", percent(percent, accuracy = 0.1), ")"))
+
+ggplot(weekday_data, aes(x = day_of_week, y = n, fill = member_casual)) +
+  geom_col(position = position_dodge()) +
+  geom_text(aes(label = label), position = position_dodge(width = 0.9), vjust = -0.5, size = 3) +
+  labs(title = "Rides by Day of Week", x = "Day", y = "Total Rides") +
+  theme_minimal()
+```
+
+### Rider Duration Distribution + Normal Overlay
+
+```{r}
+# Compute mean and sd manually by group
+dist_params <- all_trips %>%
+  filter(ride_length < 60) %>%
+  group_by(member_casual) %>%
+  summarise(
+    mu = mean(ride_length),
+    sigma = sd(ride_length)
+  )
+
+# Plot with overlay using constants
+plot_dist <- all_trips %>%
+  filter(ride_length < 60) %>%
+  ggplot(aes(x = ride_length, fill = member_casual)) +
+  geom_histogram(aes(y = ..density..), alpha = 0.4, position = "identity", bins = 60) +
+  stat_function(
+    fun = dnorm,
+    args = list(mean = dist_params$mu[dist_params$member_casual == "member"],
+                sd = dist_params$sigma[dist_params$member_casual == "member"]),
+    color = "blue"
+  ) +
+  stat_function(
+    fun = dnorm,
+    args = list(mean = dist_params$mu[dist_params$member_casual == "casual"],
+                sd = dist_params$sigma[dist_params$member_casual == "casual"]),
+    color = "red"
+  ) +
+  facet_wrap(~member_casual) +
+  labs(title = "Ride Duration Distribution", x = "Minutes", y = "Density") +
+  theme_minimal()
+
+plot_dist
+```
+
+###This section is for demography: Age Distribution by User Type (2019 only)
+
+```{r}
+df_2019 %>%
+  ggplot(aes(x = age, fill = member_casual)) +
+  geom_histogram(position = "identity", alpha = 0.6, bins = 30) +
+  facet_wrap(~member_casual) +
+  labs(title = "Age Distribution by Rider Type", x = "Age", y = "Count") +
+  theme_minimal()
+```
+
+### Gender Distribution by User Type with n(%)
+
+```{r}
+gender_data <- df_2019 %>%
+  count(member_casual, gender) %>%
+  group_by(member_casual) %>%
+  mutate(percent = n / sum(n), label = paste0(n, " (", percent(percent, accuracy = 0.1), ")"))
+
+ggplot(gender_data, aes(x = gender, y = n, fill = member_casual)) +
+  geom_col(position = position_dodge()) +
+  geom_text(aes(label = label), position = position_dodge(width = 0.9), vjust = -0.5, size = 3) +
+  labs(title = "Gender Distribution by Rider Type", x = "Gender", y = "Count") +
+  theme_minimal()
+```
+
+### Ride Duration by Gender and User Type (2019 only)
+
+```{r}
+df_2019 %>%
+  group_by(member_casual, gender) %>%
+  summarise(
+    avg_duration = mean(ride_length),
+    sd_duration = sd(ride_length),
+    median_age = median(age),
+    total_rides = n()
+  ) |> 
+  knitr::kable()
+```
+
+### Paired t-test and Poisson/Binomial Test (2019 Only)
+
+```{r}
+# Paired t-test of weekday vs weekend for members
+library(stats)
+
+weekday <- df_2019 %>% filter(member_casual == "member", !day_of_week %in% c("Sat", "Sun"))
+weekend <- df_2019 %>% filter(member_casual == "member", day_of_week %in% c("Sat", "Sun"))
+
+t.test(weekday$ride_length, weekend$ride_length, paired = FALSE)  # Welch t-test (unpaired as riders vary)
+
+# Poisson regression to see effect of gender and age on ride count
+library(MASS)
+df_agg <- df_2019 %>%
+  count(gender, age, member_casual) %>%
+  filter(!is.na(gender))
+
+pois_model <- glm(n ~ gender + age + member_casual, family = poisson(), data = df_agg)
+summary(pois_model)
+```
+
+#### 🔍 Insights:
+
+- **Gender & Usage:** Males took more rides than females. Among members, the difference is substantial.
+- **Age & Usage:** Younger riders (median age ~27–35) dominate usage. Age has a negative association with ride count (Poisson β = -0.0337).
+- **Member Type Differences:**
+  - Casual riders took significantly longer trips on average.
+  - Members took many more trips, especially on weekdays.
+  - T-test confirms members ride longer on weekends (p = 0.0126).
+
+#### 💡 Strategic Implications:
+
+1. **Engage Younger Riders:** Offer incentives for loyalty in younger age brackets.
+2. **Leverage Weekends:** Promote longer leisure rides through weekend campaigns.
+3. **Balance Gender Usage:** Tailor marketing to underrepresented genders to increase inclusivity and usage.
+```
